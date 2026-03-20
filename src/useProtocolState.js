@@ -104,7 +104,6 @@ export function useProtocolState() {
         type, volume: type === "transfer" ? 100 : 50,
         sourceSlot: "", sourceWell: "A1",
         destSlot: "", destWell: "A1",
-        destVolume: null,      // null = use step.volume; number = override primary dest
         multiDests: [],        // each entry: { slot, well, volume? } — volume null = use step.volume
         pipette: "", tipPolicy: "new_each",
         keepTipAfterStep: false,
@@ -348,7 +347,6 @@ export function useProtocolState() {
       type: "transfer",
       sourceSlot: srcSlot, sourceWell: srcWell,
       destSlot: dstSlot, destWell: dstWell,
-      destVolume: null,
       multiDests: [],
       volume: vol, pipette,
       tipPolicy: "new_each",
@@ -485,9 +483,8 @@ export function useProtocolState() {
       if (s.type === "mix") {
         return [`${i+1},mix,${s.sourceSlot},${s.sourceWell},,,${ s.volume},${s.pipette},,,${s.note||""}`];
       }
-      const primaryVol = (s.destVolume != null && s.destVolume !== "") ? Number(s.destVolume) : (s.volume || 0);
       const allDests = [
-        { slot: s.destSlot, well: s.destWell, volume: primaryVol },
+        { slot: s.destSlot, well: s.destWell, volume: s.volume || 0 },
         ...(s.multiDests || []).map(d => ({
           slot: d.slot, well: d.well,
           volume: (d.volume != null && d.volume !== "") ? Number(d.volume) : (s.volume || 0),

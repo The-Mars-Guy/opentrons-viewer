@@ -20,10 +20,8 @@ export function estimateRunTimePerStep(steps) {
     }
 
     // Build dest list with per-dest volumes
-    const primaryVol = (s.destVolume != null && s.destVolume !== "")
-      ? Number(s.destVolume) : (s.volume || 0);
     const destList = [
-      ...(s.destSlot && s.destWell ? [primaryVol] : []),
+      ...(s.destSlot && s.destWell ? [s.volume || 0] : []),
       ...(s.multiDests || []).map(d =>
         (d.volume != null && d.volume !== "") ? Number(d.volume) : (s.volume || 0)
       ),
@@ -111,11 +109,9 @@ export function computeVolumeMap(labware, steps, liquids) {
     if (s.type !== "transfer" || !s.sourceSlot || !s.sourceWell) return;
     const srcKey = `${s.sourceSlot}:${s.sourceWell}`;
 
-    const primaryVol = (s.destVolume != null && s.destVolume !== "")
-      ? Number(s.destVolume) : (s.volume || 0);
     const dests = [
       ...(s.destSlot && s.destWell
-        ? [{ slot: s.destSlot, well: s.destWell, volume: primaryVol }]
+        ? [{ slot: s.destSlot, well: s.destWell, volume: s.volume || 0 }]
         : []),
       ...(s.multiDests || []).map(d => ({
         slot: d.slot, well: d.well,

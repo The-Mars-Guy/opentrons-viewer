@@ -157,15 +157,10 @@ export function generateCode({ labware, steps, liquids, protocolName, author, de
     // ── Transfer step ─────────────────────────────────────────────────────────
     if (!step.destSlot) { push(`    # Step ${i+1}: INCOMPLETE — skipped`); push(); return; }
 
-    // Build dest list — each dest carries its own resolved volume
-    // dst.volume overrides step.volume; fall back to step.volume if not set
-    const primaryDest = {
-      slot: step.destSlot,
-      well: step.destWell,
-      volume: (step.destVolume != null && step.destVolume !== "") ? Number(step.destVolume) : (step.volume || 0),
-    };
+    // Build dest list — primary dest always uses step.volume;
+    // additional dests may carry their own volume override (null = use step.volume)
     const allDests = [
-      primaryDest,
+      { slot: step.destSlot, well: step.destWell, volume: step.volume || 0 },
       ...(step.multiDests || []).map(d => ({
         slot: d.slot,
         well: d.well,

@@ -63,7 +63,7 @@ export function runValidation({ labware, steps }) {
 
         // Per-dest volume checks (default vol + any overrides)
         const allDestVols = [
-          (s.destVolume != null && s.destVolume !== "") ? Number(s.destVolume) : (s.volume || 0),
+          (s.volume || 0),
           ...(s.multiDests || []).map(d =>
             (d.volume != null && d.volume !== "") ? Number(d.volume) : (s.volume || 0)
           ),
