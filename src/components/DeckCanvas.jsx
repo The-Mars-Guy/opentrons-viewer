@@ -75,8 +75,11 @@ export default function DeckCanvas({ labware, steps, selectedSlot, onSlotClick, 
     if (!srcPos) return;
     const lineColor = PIPETTE_COLORS[s.pipette] || "#22d3ee";
     const allDests = [
-      ...(s.destSlot && s.destWell ? [{ slot: s.destSlot, well: s.destWell }] : []),
-      ...(s.multiDests || []),
+      ...(s.destSlot && s.destWell ? [{ slot: s.destSlot, well: s.destWell, volume: s.volume }] : []),
+      ...(s.multiDests || []).map(d => ({
+        slot: d.slot, well: d.well,
+        volume: (d.volume != null && d.volume !== "") ? Number(d.volume) : (s.volume || 0),
+      })),
     ];
     allDests.forEach((dst, di) => {
       if (!dst.slot || !dst.well) return;
@@ -89,7 +92,7 @@ export default function DeckCanvas({ labware, steps, selectedSlot, onSlotClick, 
         color: lineColor,
         srcSlot: s.sourceSlot, srcWell: s.sourceWell,
         dstSlot: dst.slot, dstWell: dst.well,
-        volLabel: s.volume,
+        volLabel: dst.volume,
         markerId: `arr-pip-${(s.pipette || "default").replace(/\W/g, "_")}`,
       });
     });
@@ -149,27 +152,33 @@ export default function DeckCanvas({ labware, steps, selectedSlot, onSlotClick, 
           const dx = c.x2 - c.x1, dy = c.y2 - c.y1;
           const len = Math.sqrt(dx*dx + dy*dy) || 1;
           const ux = dx/len, uy = dy/len;
-          const margin = 7;
+          const margin = 8;
           const x1 = c.x1 + ux*margin, y1 = c.y1 + uy*margin;
           const x2 = c.x2 - ux*margin, y2 = c.y2 - uy*margin;
           const mx = (x1+x2)/2, my = (y1+y2)/2;
-          const perp = 18;
+          const perp = 14;
           const cpx = mx - uy*perp, cpy = my + ux*perp;
           const midBx = (x1 + 2*cpx + x2)/4, midBy = (y1 + 2*cpy + y2)/4;
+          // Two compact lines: wells on top, volume below
+          // Pill width just wide enough for the longer of the two strings
+          const line1 = `${c.srcWell}→${c.dstWell}`;
+          const line2 = `${c.volLabel}µL`;
+          const pillW = Math.max(line1.length, line2.length) * 6 + 12;
+          const pillH = 22;
           return (
             <g key={c.key}>
               <path d={`M${x1},${y1} Q${cpx},${cpy} ${x2},${y2}`}
-                stroke={c.color} strokeWidth="3" strokeOpacity="0.12" fill="none" />
+                stroke={c.color} strokeWidth="4" strokeOpacity="0.07" fill="none" />
               <path d={`M${x1},${y1} Q${cpx},${cpy} ${x2},${y2}`}
-                stroke={c.color} strokeWidth="1.5" strokeOpacity="0.7" fill="none"
-                strokeDasharray="5 3" markerEnd={`url(#${c.markerId})`} />
-              <circle cx={x1} cy={y1} r={3} fill={c.color} opacity="0.9" />
-              <rect x={midBx-24} y={midBy-9} width={48} height={18} rx={5}
-                fill={theme.bg} stroke={c.color} strokeOpacity="0.6" strokeWidth="1" />
-              <text x={midBx} y={midBy-1} textAnchor="middle" fill={c.color}
-                fontSize="7" fontFamily="monospace" opacity="0.95">{c.srcWell}→{c.dstWell}</text>
-              <text x={midBx} y={midBy+7} textAnchor="middle" fill={c.color}
-                fontSize="6" fontFamily="monospace" opacity="0.7">{c.volLabel}µL</text>
+                stroke={c.color} strokeWidth="1.5" strokeOpacity="0.65" fill="none"
+                strokeDasharray="6 3" markerEnd={`url(#${c.markerId})`} />
+              <circle cx={x1} cy={y1} r={3.5} fill={c.color} opacity="0.95" />
+              <rect x={midBx - pillW/2} y={midBy - pillH/2} width={pillW} height={pillH} rx={5}
+                fill={theme.bgCard || "#060e1d"} stroke={c.color} strokeOpacity="0.7" strokeWidth="1.1" />
+              <text x={midBx} y={midBy - 2} textAnchor="middle" fill={c.color}
+                fontSize="8" fontFamily="monospace" fontWeight="700" opacity="0.97">{line1}</text>
+              <text x={midBx} y={midBy + 8} textAnchor="middle" fill={c.color}
+                fontSize="8" fontFamily="monospace" opacity="0.8">{line2}</text>
             </g>
           );
         })}

@@ -72,9 +72,9 @@ export default function StepCard({ step, index, labware, onRemove, onUpdate, onM
   const nextDifferentPipette = step.keepTipAfterStep && nextStep && nextStep.pipette && nextStep.pipette !== step.pipette;
 
   // Compute total volume across all dests for the header summary
-  const primaryVol = (step.destVolume != null && step.destVolume !== "") ? Number(step.destVolume) : (step.volume || 0);
+  // Primary dest always uses step.volume; additional dests may override
   const allDestVols = [
-    primaryVol,
+    (step.volume || 0),
     ...multiDests.map(d => (d.volume != null && d.volume !== "") ? Number(d.volume) : (step.volume || 0)),
   ];
   const totalDestVol  = allDestVols.reduce((a, b) => a + b, 0);
@@ -146,7 +146,7 @@ export default function StepCard({ step, index, labware, onRemove, onUpdate, onM
                 ? hasVarVols
                   ? `${destCount} dests · ${totalDestVol}µL total (var)`
                   : `${destCount} dests · ${totalDestVol}µL total`
-                : `${step.destSlot||"?"}[${step.destWell||"?"}] · ${primaryVol}µL`;
+                : `${step.destSlot||"?"}[${step.destWell||"?"}] · ${step.volume||"?"}µL`;
               return `${step.sourceSlot||"?"}[${step.sourceWell||"?"}] → ${destLabel}`;
             })()
               : `${step.mixReps||3}× ${step.volume||"?"}µL in ${step.sourceSlot||"?"}[${step.sourceWell||"?"}]`
@@ -240,27 +240,6 @@ export default function StepCard({ step, index, labware, onRemove, onUpdate, onM
                 </div>
               </div>
 
-              {/* Primary destination volume override */}
-              <div style={{ marginBottom: 6 }}>
-                <div style={{ fontSize: "0.59375rem", color: "#475569", marginBottom: 4, letterSpacing: 0.8 }}>PRIMARY DEST VOLUME OVERRIDE</div>
-                <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                  <div style={{ fontSize: "0.65625rem", color: "#22d3ee", minWidth: 60, flexShrink: 0 }}>
-                    {step.destSlot||"—"}[{step.destWell||"—"}]
-                  </div>
-                  <input
-                    type="number"
-                    value={step.destVolume ?? ""}
-                    onChange={e => onUpdate(index, "destVolume", e.target.value === "" ? null : parseFloat(e.target.value))}
-                    placeholder={`${step.volume||100} (default)`}
-                    style={{ ...inp, flex: 1 }}
-                  />
-                  <span style={{ fontSize: "0.59375rem", color: "#475569", flexShrink: 0 }}>µL</span>
-                  {(step.destVolume != null && step.destVolume !== "") && (
-                    <button onClick={() => onUpdate(index, "destVolume", null)}
-                      style={{ fontSize: "0.71875rem", background: "none", border: "none", color: "#475569", cursor: "pointer", padding: "0 3px" }} title="Reset to default">↺</button>
-                  )}
-                </div>
-              </div>
 
               {/* Additional destinations */}
               <div>
@@ -293,22 +272,28 @@ export default function StepCard({ step, index, labware, onRemove, onUpdate, onM
                         <option value="">Well…</option>
                         {(mdDef?.wells || []).map(w => <option key={w} value={w}>{w}</option>)}
                       </select>
-                      {/* Volume override */}
+                      {/* Volume override — blank = use default (step.volume) */}
                       <div style={{ flex: 1, position: "relative" }}>
                         <input
                           type="number"
                           value={md.volume ?? ""}
                           onChange={e => updateDest(mi, { volume: e.target.value === "" ? null : parseFloat(e.target.value) })}
-                          placeholder={`${step.volume||100}`}
+                          placeholder={String(step.volume || 100)}
                           style={{
                             ...inp,
                             borderColor: isOverridden ? "#a78bfa44" : "var(--input-border,#1e293b)",
                             color: isOverridden ? "#a78bfa" : "var(--input-color,#e2e8f0)",
                           }}
-                          title={isOverridden ? `Override: ${effVol}µL` : `Default: ${step.volume||100}µL`}
                         />
                       </div>
-                      <span style={{ fontSize: "0.59375rem", color: "#475569", flexShrink: 0 }}>µL</span>
+                      {/* Live effective volume badge */}
+                      <span style={{
+                        fontSize: "0.59375rem", flexShrink: 0, minWidth: 36, textAlign: "right",
+                        color: isOverridden ? "#a78bfa" : "#475569",
+                        fontWeight: isOverridden ? 700 : 400,
+                      }}>
+                        {effVol}µL
+                      </span>
                       {isOverridden && (
                         <button onClick={() => updateDest(mi, { volume: null })}
                           style={{ fontSize: "0.71875rem", background: "none", border: "none", color: "#475569", cursor: "pointer", padding: "0 1px" }} title="Reset to default">↺</button>
