@@ -30,6 +30,9 @@ export default function App() {
     try { localStorage.setItem("ot-builder-palette", next ? "open" : "closed"); } catch {}
   };
 
+  const [dragStepIdx,     setDragStepIdx]     = useState(null);
+  const [dragOverStepIdx, setDragOverStepIdx] = useState(null);
+
   const state = useProtocolState();
   const {
     labware, steps, liquids, setLiquids,
