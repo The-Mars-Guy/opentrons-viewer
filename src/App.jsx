@@ -364,7 +364,7 @@ export default function App() {
                       <div style={{ fontSize: "0.59375rem", color: theme.textDim, marginBottom: 6, fontWeight: 700, letterSpacing: 1 }}>TIME BREAKDOWN</div>
                       {steps.map((s, i) => {
                         const secs = stepTimings[i] || 0;
-                        const pct = runTimeSecs > 10 ? Math.round((secs / (runTimeSecs - 10)) * 100) : 0;
+                        const pct = runTimeSecs > 10 ? Math.min(100, Math.round((secs / Math.max(1, runTimeSecs - 10)) * 100)) : 0;
                         return (
                           <div key={i} style={{ marginBottom: 4 }}>
                             <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.59375rem", color: theme.textDim, marginBottom: 2 }}>
@@ -441,10 +441,9 @@ export default function App() {
                             onDrop={e => {
                               e.preventDefault();
                               if (dragStepIdx !== null && dragStepIdx !== i) {
-                                moveStep(dragStepIdx, i > dragStepIdx ? 1 : -1);
-                                // For multi-position moves, reorder directly
+                                // Reorder directly via hook's setSteps
                                 pushHistory();
-                                setSteps(prev => {
+                                state.setSteps(prev => {
                                   const arr = [...prev];
                                   const [moved] = arr.splice(dragStepIdx, 1);
                                   arr.splice(i, 0, moved);

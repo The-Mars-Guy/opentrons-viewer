@@ -2,13 +2,13 @@ import { PIPETTES, LABWARE_DEFS, LIQUID_CLASSES, API_VERSION } from "./constants
 import { lwVar, fmt } from "./utils";
 
 // ── Code Generator ────────────────────────────────────────────────────────────
-// Targets Opentrons Flex Python Protocol API 2.27.
+// Targets Opentrons Flex Python Protocol API 2.23.
 //
 // Per-destination volumes: each dest (primary + multiDests) may carry its own
 // `volume` field. When absent, the step-level `step.volume` is used as default.
 //
 // Code path selection:
-//   liquidClass != "" → transfer_with_liquid_class() (API 2.24+)
+//   liquidClass != "" → transfer_with_liquid_class() (requires robot software v8.3+ / API 2.24+)
 //   liquidClass == "" → manual aspirate/dispense with explicit flow rates
 
 export function generateCode({ labware, steps, liquids, protocolName, author, description, liquidSensing = true }) {
@@ -54,17 +54,10 @@ export function generateCode({ labware, steps, liquids, protocolName, author, de
   });
   push();
 
-  // Liquid class instances
-  const usedClasses = new Set(
-    steps.map(s => LIQUID_CLASSES[s.liquidClass]?.apiName).filter(Boolean)
-  );
-  if (usedClasses.size > 0) {
-    push(`    # ── Liquid class instances (API ${API_VERSION}) ──`);
-    usedClasses.forEach(cls => {
-      push(`    lc_${cls} = protocol.get_liquid_class("${cls}")`);
-    });
-    push();
-  }
+  // Liquid class instances are NOT emitted — get_liquid_class() has a known
+  // bug in the Opentrons App that causes it to fail with "version 1 not found"
+  // regardless of robot software version. We always use explicit building-block
+  // commands with the equivalent flow rates instead.
 
   // Liquid definitions
   if (liquids && liquids.length > 0) {
@@ -104,7 +97,17 @@ export function generateCode({ labware, steps, liquids, protocolName, author, de
     const maxVol  = PIPETTES[step.pipette]?.maxVol || 1000;
     const srcV    = lwVar(step.sourceSlot);
     const lcName  = LIQUID_CLASSES[step.liquidClass]?.apiName || null;
-    const useLiquidClass = !!lcName;
+    // Always use manual building-block path — transfer_with_liquid_class() /
+    // get_liquid_class() has a known Opentrons App bug ("version 1 not found").
+    // Instead, map the selected liquid class to its equivalent flow rates.
+    const useLiquidClass = false;
+    // Flow rate presets per liquid class (used in manual path below)
+    const LC_RATES = {
+      aqueous:  { asp: 150, disp: 300, blow: 200, airGap: 0,  touchTip: false, prewet: false },
+      volatile: { asp: 30,  disp: 50,  blow: 30,  airGap: 5,  touchTip: false, prewet: true  },
+      viscous:  { asp: 20,  disp: 30,  blow: 20,  airGap: 0,  touchTip: true,  prewet: true  },
+    };
+    const lcRates = (lcName && LC_RATES[lcName]) ? LC_RATES[lcName] : null;
 
     const stepLabel = step.type === "transfer"
       ? `Transfer from ${step.sourceSlot}[${step.sourceWell}]`
@@ -138,14 +141,14 @@ export function generateCode({ labware, steps, liquids, protocolName, author, de
         push(`    ${pip}.mix(`);
         push(`        repetitions=${step.mixReps||3},`);
         push(`        volume=${step.volume||50},`);
-        push(`        location=${srcV}["${step.sourceWell}"].meniscus(z=${step.meniscusOffset||-5}, target="end"),`);
+        push(`        location=${srcV}["${step.sourceWell}"].meniscus(z=${step.meniscusOffset||-5}),`);
         push(`        liquid_class=lc_${lcName}`);
         push(`    )`);
       } else {
         push(`    ${pip}.flow_rate.aspirate = ${step.aspirateRate||150}`);
         push(`    ${pip}.flow_rate.dispense = ${step.dispenseRate||300}`);
         push(`    ${pip}.flow_rate.blow_out = ${step.blowoutRate||200}`);
-        push(`    ${pip}.mix(${step.mixReps||3}, ${step.volume||50}, ${srcV}["${step.sourceWell}"].meniscus(z=${step.meniscusOffset||-5}, target="end"))`);
+        push(`    ${pip}.mix(${step.mixReps||3}, ${step.volume||50}, ${srcV}["${step.sourceWell}"].meniscus(z=${step.meniscusOffset||-5}))`);
         push(`    ${pip}.blow_out(${srcV}["${step.sourceWell}"].top(${step.blowoutTopOffset||-2}))`);
       }
 
@@ -185,74 +188,29 @@ export function generateCode({ labware, steps, liquids, protocolName, author, de
     const blowLocation = (dstV, dstW) =>
       blowRef === "bottom" ? `${dstV}["${dstW}"].bottom(${blowOffset})` : `${dstV}["${dstW}"].top(${blowOffset})`;
 
-    // ── Liquid class path ─────────────────────────────────────────────────────
-    if (useLiquidClass) {
-      if (!incomingTip && (tipPolicy === "one_total" || tipPolicy === "one_per_source")) {
-        push(`    ${pip}.pick_up_tip()`);
-      } else if (incomingTip) {
-        push(`    # Tip carried in from previous step`);
-      }
+    // ── Manual path ──────────────────────────────────────────────────────────
+    // Note: liquid class path (transfer_with_liquid_class) is intentionally
+    // disabled due to a known Opentrons App bug. Flow rates from the selected
+    // liquid class are applied below instead.
+    // If a liquid class is selected, use its preset rates instead of manual fields
+    const _asp  = lcRates ? lcRates.asp  : (step.aspirateRate || 150);
+    const _disp = lcRates ? lcRates.disp : (step.dispenseRate || 300);
+    const _blow = lcRates ? lcRates.blow : (step.blowoutRate  || 200);
+    // Override airGap and touchTip from liquid class if set
+    const effectiveAirGap  = lcRates ? lcRates.airGap  : airGap;
+    const effectiveTouchTip = lcRates ? lcRates.touchTip : step.touchTip;
+    const effectivePrewet   = lcRates ? lcRates.prewet   : step.prewet;
 
-      // If all volumes are the same, use scalar; otherwise per-dest calls
-      const validDests = allDests.filter(d => d.slot && d.well);
-      const allSameVol = validDests.every(d => d.volume === validDests[0].volume);
-
-      if (allSameVol || validDests.length === 1) {
-        const destList = validDests.map(d => `${lwVar(d.slot)}["${d.well}"]`).join(", ");
-        push(`    ${pip}.transfer_with_liquid_class(`);
-        push(`        volume=${validDests[0].volume},`);
-        push(`        source=${srcV}["${step.sourceWell}"],`);
-        push(`        dest=${validDests.length === 1 ? destList : `[${destList}]`},`);
-        push(`        liquid_class=lc_${lcName},`);
-        push(`        new_tip="${tipPolicy === "new_each" ? "always" : "never"}",`);
-        if (liquidSensing) push(`        liquid_presence_detection=True,`);
-        push(`    )`);
-      } else {
-        // Different volumes — emit one transfer_with_liquid_class per dest
-        push(`    # Different volumes per destination — emitting individual transfers`);
-        validDests.forEach((dst, di) => {
-          if (tipPolicy === "new_each") {
-            if (di === 0 && incomingTip) push(`    # Tip carried in from previous step`);
-            else push(`    ${pip}.pick_up_tip()`);
-          }
-          push(`    ${pip}.transfer_with_liquid_class(`);
-          push(`        volume=${dst.volume},`);
-          push(`        source=${srcV}["${step.sourceWell}"],`);
-          push(`        dest=${lwVar(dst.slot)}["${dst.well}"],`);
-          push(`        liquid_class=lc_${lcName},`);
-          push(`        new_tip="never",`);
-          if (liquidSensing) push(`        liquid_presence_detection=True,`);
-          push(`    )`);
-          if (tipPolicy === "new_each") {
-            const isLast = di === validDests.length - 1;
-            if (isLast && keepTip) { push(`    # Tip retained — carrying into step ${i+2}`); tipCarried[step.pipette] = true; }
-            else push(`    ${pip}.drop_tip()`);
-          }
-        });
-      }
-
-      if (tipPolicy !== "new_each") {
-        if (keepTip) { push(`    # Tip retained — carrying into step ${i+2}`); tipCarried[step.pipette] = true; }
-        else { push(`    ${pip}.drop_tip()`); tipCarried[step.pipette] = false; }
-      } else if (!allSameVol || validDests.length <= 1) {
-        // already handled per-dest above
-      } else {
-        tipCarried[step.pipette] = false;
-      }
-
-      push(); return;
-    }
-
-    // ── Manual path ───────────────────────────────────────────────────────────
-    push(`    ${pip}.flow_rate.aspirate = ${step.aspirateRate||150}`);
-    push(`    ${pip}.flow_rate.dispense = ${step.dispenseRate||300}`);
-    push(`    ${pip}.flow_rate.blow_out = ${step.blowoutRate||200}`);
+    if (lcRates) push(`    # Liquid class "${lcName}" — using equivalent manual flow rates`);
+    push(`    ${pip}.flow_rate.aspirate = ${_asp}`);
+    push(`    ${pip}.flow_rate.dispense = ${_disp}`);
+    push(`    ${pip}.flow_rate.blow_out = ${_blow}`);
 
     if (tipPolicy === "one_total" || tipPolicy === "one_per_source") {
       if (!incomingTip) push(`    ${pip}.pick_up_tip()`);
       else push(`    # Tip carried in from previous step`);
       if (liquidSensing) push(`    ${pip}.measure_liquid_height(${srcV}["${step.sourceWell}"])`);
-      if (step.prewet) emitPrewet(L, pip, srcV, step.sourceWell, maxVol, menOffset, dispOffset, blowOffset, delayAsp, delayDisp, liquidSensing);
+      if (effectivePrewet) emitPrewet(L, pip, srcV, step.sourceWell, maxVol, menOffset, dispOffset, blowOffset, delayAsp, delayDisp, liquidSensing);
     }
 
     allDests.forEach((dst, di) => {
@@ -261,11 +219,11 @@ export function generateCode({ labware, steps, liquids, protocolName, author, de
       const dstW       = dst.well;
       // Use this dest's resolved volume
       const totalVol   = dst.volume;
-      const trips      = Math.ceil(totalVol / Math.max(1, maxVol - airGap));
+      const trips      = Math.ceil(totalVol / Math.max(1, maxVol - effectiveAirGap));
       const volPerTrip = totalVol / trips;
 
       const aspirateLoc = liquidSensing
-        ? `${srcV}["${step.sourceWell}"].meniscus(z=${menOffset}, target="end")`
+        ? `${srcV}["${step.sourceWell}"].meniscus(z=${menOffset})`
         : `${srcV}["${step.sourceWell}"].bottom(5)`;
 
       if (tipPolicy === "new_each") {
@@ -273,7 +231,7 @@ export function generateCode({ labware, steps, liquids, protocolName, author, de
         else push(`    ${pip}.pick_up_tip()`);
         if (liquidSensing && (step.remeasureEachAsp || di === 0))
           push(`    ${pip}.measure_liquid_height(${srcV}["${step.sourceWell}"])`);
-        if (di === 0 && step.prewet) emitPrewet(L, pip, srcV, step.sourceWell, maxVol, menOffset, dispOffset, blowOffset, delayAsp, delayDisp, liquidSensing);
+        if (di === 0 && effectivePrewet) emitPrewet(L, pip, srcV, step.sourceWell, maxVol, menOffset, dispOffset, blowOffset, delayAsp, delayDisp, liquidSensing);
       } else if (liquidSensing && step.remeasureEachAsp) {
         push(`    ${pip}.measure_liquid_height(${srcV}["${step.sourceWell}"])`);
       }
@@ -290,12 +248,12 @@ export function generateCode({ labware, steps, liquids, protocolName, author, de
           push(`        ${pip}.aspirate(${fmt(volPerTrip)}, ${aspirateLoc}, rate=1.0)`);
         }
         if (delayAsp > 0)  push(`        protocol.delay(seconds=${delayAsp})`);
-        if (airGap > 0)    push(`        ${pip}.air_gap(${airGap})`);
-        push(`        ${pip}.dispense(${fmt(volPerTrip + airGap)}, ${dispLocation(dstV, dstW)})`);
+        if (effectiveAirGap > 0)    push(`        ${pip}.air_gap(${effectiveAirGap})`);
+        push(`        ${pip}.dispense(${fmt(volPerTrip + effectiveAirGap)}, ${dispLocation(dstV, dstW)})`);
         if (delayDisp > 0) push(`        protocol.delay(seconds=${delayDisp})`);
         push(`        ${pip}.blow_out(${blowLocation(dstV, dstW)})`);
         if (delayDisp > 0) push(`        protocol.delay(seconds=${delayDisp})`);
-        if (step.touchTip) push(`        ${pip}.touch_tip(${dstV}["${dstW}"], v_offset=-2, radius=0.9, speed=20)`);
+        if (effectiveTouchTip) push(`        ${pip}.touch_tip(${dstV}["${dstW}"], v_offset=-2, radius=0.9, speed=20)`);
       } else {
         if (aspKwargs.length) {
           push(`    ${pip}.aspirate(${fmt(totalVol)}, ${aspirateLoc}, rate=1.0, ${aspKwargs.join(", ")})`);
@@ -303,12 +261,12 @@ export function generateCode({ labware, steps, liquids, protocolName, author, de
           push(`    ${pip}.aspirate(${fmt(totalVol)}, ${aspirateLoc}, rate=1.0)`);
         }
         if (delayAsp > 0)  push(`    protocol.delay(seconds=${delayAsp})`);
-        if (airGap > 0)    push(`    ${pip}.air_gap(${airGap})`);
-        push(`    ${pip}.dispense(${fmt(totalVol + airGap)}, ${dispLocation(dstV, dstW)})`);
+        if (effectiveAirGap > 0)    push(`    ${pip}.air_gap(${effectiveAirGap})`);
+        push(`    ${pip}.dispense(${fmt(totalVol + effectiveAirGap)}, ${dispLocation(dstV, dstW)})`);
         if (delayDisp > 0) push(`    protocol.delay(seconds=${delayDisp})`);
         push(`    ${pip}.blow_out(${blowLocation(dstV, dstW)})`);
         if (delayDisp > 0) push(`    protocol.delay(seconds=${delayDisp})`);
-        if (step.touchTip) push(`    ${pip}.touch_tip(${dstV}["${dstW}"], v_offset=-2, radius=0.9, speed=20)`);
+        if (effectiveTouchTip) push(`    ${pip}.touch_tip(${dstV}["${dstW}"], v_offset=-2, radius=0.9, speed=20)`);
       }
 
       if (tipPolicy === "new_each") {
@@ -338,7 +296,7 @@ export function generateCode({ labware, steps, liquids, protocolName, author, de
 function emitPrewet(L, pip, srcV, srcW, maxVol, menOffset, dispOffset, blowOffset, delayAsp, delayDisp, liquidSensing = true) {
   const pw = Math.min(20, maxVol);
   const aspirateLoc = liquidSensing
-    ? `${srcV}["${srcW}"].meniscus(z=${menOffset}, target="end")`
+    ? `${srcV}["${srcW}"].meniscus(z=${menOffset})`
     : `${srcV}["${srcW}"].bottom(5)`;
   L.push(`    # Pre-wet`);
   L.push(`    ${pip}.aspirate(${pw}, ${aspirateLoc}, rate=1.0)`);

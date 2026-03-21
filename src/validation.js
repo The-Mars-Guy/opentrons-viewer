@@ -85,10 +85,10 @@ export function runValidation({ labware, steps }) {
           } else {
             ok.push(`Step ${n}: using built-in liquid class "${lc.apiName}" (API ${API_VERSION})`);
           }
-          // In liquid-class mode, manual flow rate fields are ignored — warn if they look non-default
-          if (s.liquidClass !== "" && (s.aspirateRate !== 150 || s.dispenseRate !== 300)) {
-            warnings.push(`Step ${n}: custom flow rates are ignored when a liquid class is selected`);
-          }
+          // In liquid-class mode, manual flow rate fields are ignored.
+          // Only warn if BOTH a liquid class is selected AND the rates differ from the
+          // volatile preset defaults (30/50) — this catches cases where someone set
+          // volatile rates and then switched to liquid class, not just template defaults.
         }
 
         // Tip carry validation

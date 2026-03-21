@@ -343,34 +343,37 @@ export function useProtocolState() {
     const { srcSlot, srcWell, dstSlot, dstWell } = showConnectionModal;
     const p = preset ? SOLVENT_PRESETS[preset] : {};
     pushHistory();
-    setSteps(prev => [...prev, {
-      type: "transfer",
-      sourceSlot: srcSlot, sourceWell: srcWell,
-      destSlot: dstSlot, destWell: dstWell,
-      multiDests: [],
-      volume: vol, pipette,
-      tipPolicy: "new_each",
-      keepTipAfterStep: false,
-      liquidClass: "",
-      prewet: p.prewet || false,
-      touchTip: p.touchTip || false,
-      airGap: p.airGap || 0,
-      mixReps: 3,
-      aspirateRate: p.aspirateRate || 150,
-      dispenseRate: p.dispenseRate || 300,
-      blowoutRate: p.blowoutRate || 200,
-      delayAfterAspirate: p.delayAfterAspirate || 0,
-      delayAfterDispense: p.delayAfterDispense || 0,
-      meniscusOffset: p.meniscusOffset ?? -5,
-      dispenseRef: "top", dispenseTopOffset: p.dispenseTopOffset ?? -2,
-      blowoutRef: "top", blowoutTopOffset: p.blowoutTopOffset ?? -2,
-      remeasureEachAsp: false,
-      endLocation: "", movementDelay: 0,
-      note: "",
-    }]);
+    setSteps(prev => {
+      const newSteps = [...prev, {
+        type: "transfer",
+        sourceSlot: srcSlot, sourceWell: srcWell,
+        destSlot: dstSlot, destWell: dstWell,
+        multiDests: [],
+        volume: vol, pipette,
+        tipPolicy: "new_each",
+        keepTipAfterStep: false,
+        liquidClass: "",
+        prewet: p.prewet || false,
+        touchTip: p.touchTip || false,
+        airGap: p.airGap || 0,
+        mixReps: 3,
+        aspirateRate: p.aspirateRate || 150,
+        dispenseRate: p.dispenseRate || 300,
+        blowoutRate: p.blowoutRate || 200,
+        delayAfterAspirate: p.delayAfterAspirate || 0,
+        delayAfterDispense: p.delayAfterDispense || 0,
+        meniscusOffset: p.meniscusOffset ?? -5,
+        dispenseRef: "top", dispenseTopOffset: p.dispenseTopOffset ?? -2,
+        blowoutRef: "top", blowoutTopOffset: p.blowoutTopOffset ?? -2,
+        remeasureEachAsp: false,
+        endLocation: "", movementDelay: 0,
+        note: "",
+      }];
+      setExpandedStep(newSteps.length - 1);
+      return newSteps;
+    });
     setShowConnectionModal(null);
     setSidePanel("steps");
-    setSteps(prev => { setExpandedStep(prev.length - 1); return prev; });
   }, [showConnectionModal, pushHistory]);
 
   const handleAddToStep = useCallback((stepIdx, dstSlot, dstWell) => {
