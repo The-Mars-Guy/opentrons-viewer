@@ -71,6 +71,8 @@ export default function WellGrid({ lw, def, onWellDragStart, onWellDrop, onWellD
               ref={el => onWellRef && onWellRef(lw.slot, well, el)}
               draggable
               onDragStart={e => onWellDragStart(e, lw.slot, well)}
+              onMouseEnter={() => setHoveredWell({ slot: lw.slot, well })}
+              onMouseLeave={() => setHoveredWell(null)}
               onDragOver={e => { e.preventDefault(); e.stopPropagation(); setHoveredWell({ slot: lw.slot, well }); onWellDragOver(lw.slot, well); }}
               onDragLeave={() => setHoveredWell(null)}
               onDrop={e => { e.preventDefault(); e.stopPropagation(); onWellDrop(lw.slot, well); }}

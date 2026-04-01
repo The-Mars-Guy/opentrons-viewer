@@ -16,6 +16,7 @@ export default function DeckCanvas({ labware, steps, selectedSlot, onSlotClick, 
   // Track which slot is being dragged from (labware-move), separate from well drags
   const [movingSlot,    setMovingSlot]    = useState(null);
 
+
   const handleWellRef = useCallback((slot, well, el) => {
     if (!wellRefs.current[slot]) wellRefs.current[slot] = {};
     wellRefs.current[slot][well] = el;
@@ -149,6 +150,12 @@ export default function DeckCanvas({ labware, steps, selectedSlot, onSlotClick, 
         </defs>
 
         {connections.map((c) => {
+          // Show connection only when hovering the source well or destination well
+          // hoveredWell format: { slot, well }
+          const hwKey = hoveredWell ? `${hoveredWell.slot}:${hoveredWell.well}` : null;
+          const srcKey = `${c.srcSlot}:${c.srcWell}`;
+          const dstKey = `${c.dstSlot}:${c.dstWell}`;
+          const isVisible = !hwKey || hwKey === srcKey || hwKey === dstKey;
           const dx = c.x2 - c.x1, dy = c.y2 - c.y1;
           const len = Math.sqrt(dx*dx + dy*dy) || 1;
           const ux = dx/len, uy = dy/len;
@@ -166,7 +173,7 @@ export default function DeckCanvas({ labware, steps, selectedSlot, onSlotClick, 
           const pillW = Math.max(line1.length, line2.length) * 6 + 12;
           const pillH = 22;
           return (
-            <g key={c.key}>
+            <g key={c.key} style={{ opacity: isVisible ? 1 : 0, transition: "opacity 0.15s ease" }}>
               <path d={`M${x1},${y1} Q${cpx},${cpy} ${x2},${y2}`}
                 stroke={c.color} strokeWidth="4" strokeOpacity="0.07" fill="none" />
               <path d={`M${x1},${y1} Q${cpx},${cpy} ${x2},${y2}`}
